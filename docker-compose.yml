@@ -1,0 +1,69 @@
+services:
+  app:
+    build: .
+    container_name: notification-service
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=notification_db
+      - DB_USER=${DB_USER}         # <-- Ngambil dari file .env
+      - DB_PASSWORD=${DB_PASSWORD} # <-- Ngambil dari file .env
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - notification-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: notification-postgres
+    environment:
+      POSTGRES_DB: notification_db
+      POSTGRES_USER: ${DB_USER}         # <-- Ngambil dari file .env
+      POSTGRES_PASSWORD: ${DB_PASSWORD} # <-- Ngambil dari file .env
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"] # <-- Update healthcheck
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - notification-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: notification-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - notification-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  notification-network:
+    driver: bridge
