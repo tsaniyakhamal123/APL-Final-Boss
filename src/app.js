@@ -1,28 +1,25 @@
 import express from 'express';
 import { startSubscriber } from './events/notificationSubscriber.js';
-import notificationRoutes from './controllers/notificationController.js';
-import { connectRedis } from './config/redis.js';
+import routes from './routes/index.js';
+import 'dotenv/config';
+// import express from 'express';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use('/api/notifications', routes);
 
-// Routes REST API
-app.use('/api/notifications', notificationRoutes);
-
-// Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'notification-service' });
+  res.json({ status: 'ok', service: 'notification-service', timestamp: new Date().toISOString() });
 });
 
-// Start Redis subscriber (dengerin event dari kelompok lain)
 const start = async () => {
-  await connectRedis();
-  startSubscriber();
-  app.listen(PORT, () => {
-    console.log(`Notification service running on port ${PORT}`);
-  });
+  await startSubscriber();
+  app.listen(PORT, () => console.log(`[App] Running on port ${PORT}`));
 };
 
-start();
+start().catch((err) => {
+  console.error('[App] Fatal startup error:', err);
+  process.exit(1);
+});

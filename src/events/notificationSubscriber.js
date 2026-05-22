@@ -1,48 +1,106 @@
-import { subscriber } from '../config/redis.js';
+import { connectRabbitMQ, EXCHANGE } from '../config/rabbitmq.js';
 import { processNotification } from '../services/notificationService.js';
 import { generateSuratTugas } from '../services/suratTugasService.js';
 
-const CHANNELS = [
-  'bidding:status_changed',   // Kelompok 2
-  'project:new_match',        // Kelompok 3
-  'team:formed',              // Kelompok 3 — trigger generate Surat Tugas
+const BINDINGS = [
+  'bidding.project.created',
+  'bidding.bid.status.updated',
+  'bidding.bid.deal.confirmed',
+  'bidding.bid.counter.offered',
 ];
 
 export const startSubscriber = async () => {
-  console.log(`Subscribing to channels:`, CHANNELS);
+  const channel = await connectRabbitMQ();
 
-  for (const channel of CHANNELS) {
-    // Di Redis v4, callback dipanggil langsung saat subscribe
-    await subscriber.subscribe(channel, async (message) => {
-      console.log(`[Redis] Event dari "${channel}":`, message);
-      
-      try {
-        const payload = JSON.parse(message);
+  const { queue } = await channel.assertQueue('notification_service_queue', { durable: true });
 
-        if (channel === 'bidding:status_changed') {
-          const { event_id, user_id, user_email, status, project_title } = payload;
-          const type = status === 'ACCEPTED' ? 'BIDDING_ACCEPTED' : 'BIDDING_REJECTED';
-          const subject = `Bidding kamu ${status === 'ACCEPTED' ? 'diterima ✅' : 'ditolak ❌'} — ${project_title}`;
-          const msg = `Halo, bidding kamu untuk proyek "${project_title}" telah ${status}.`;
-          await processNotification({ event_id, user_id, user_email, type, subject, message: msg });
-        }
+  for (const routingKey of BINDINGS) {
+    await channel.bindQueue(queue, EXCHANGE, routingKey);
+  }
 
-        if (channel === 'project:new_match') {
-          const { event_id, user_id, user_email, project_title, required_skills } = payload;
-          const subject = `Ada proyek baru yang cocok buatmu — ${project_title}`;
-          const msg = `Halo, ada proyek baru "${project_title}" yang butuh skill: ${required_skills?.join(', ')}.`;
-          await processNotification({ event_id, user_id, user_email, type: 'NEW_PROJECT_MATCH', subject, message: msg });
-        }
+  console.log('[RabbitMQ] Subscribed to:', BINDINGS);
 
-        // AUTO-GENERATE Surat Tugas saat tim terbentuk
-        if (channel === 'team:formed') {
-          await generateSuratTugas(payload);
-          console.log('[Subscriber] Surat Tugas berhasil digenerate dari event Redis!');
-        }
+  channel.consume(queue, async (msg) => {
+    if (!msg) return;
+    const routingKey = msg.fields.routingKey;
+    try {
+      const payload = JSON.parse(msg.content.toString());
+      console.log(`[RabbitMQ] Event [${routingKey}]:`, payload);
+      await handleEvent(routingKey, payload);
+      channel.ack(msg);
+    } catch (err) {
+      console.error(`[RabbitMQ] Error [${routingKey}]:`, err.message);
+      channel.nack(msg, false, false);
+    }
+  });
+};
 
-      } catch (err) {
-        console.error('[Redis] Error processing message:', err);
+const handleEvent = async (routingKey, payload) => {
+  switch (routingKey) {
+
+    case 'bidding.project.created': {
+      const { project_id, client_id, client_name, email, project_title } = payload;
+      await processNotification({
+        event_id: `project_created_${project_id}`,
+        user_id: client_id,
+        user_email: email,
+        type: 'PROJECT_CREATED',
+        subject: `Proyek "${project_title}" berhasil dibuat ✅`,
+        message: `Halo ${client_name}, proyek "${project_title}" kamu berhasil dibuat dan kini terbuka untuk bidding.`,
+      });
+      break;
+    }
+
+    case 'bidding.bid.status.updated': {
+      const { user_id, status, project_title } = payload;
+      const accepted = status === 'Accepted';
+      await processNotification({
+        event_id: `bid_status_${user_id}_${Date.now()}`,
+        user_id,
+        user_email: payload.user_email || '',
+        type: 'BID_STATUS_UPDATE',
+        subject: `Bid kamu ${accepted ? 'diterima ✅' : 'ditolak ❌'} — ${project_title}`,
+        message: `Halo, bid kamu untuk proyek "${project_title}" telah ${accepted ? 'diterima' : 'ditolak'}.`,
+      });
+      break;
+    }
+
+    case 'bidding.bid.deal.confirmed': {
+      const { deal_id, project_id, project_title, mitra_id, deal_amount, timeline } = payload;
+      await processNotification({
+        event_id: `deal_mitra_${deal_id}`,
+        user_id: mitra_id,
+        user_email: payload.mitra_email || '',
+        type: 'DEAL_CONFIRMED',
+        subject: `Deal confirmed — "${project_title}" 🤝`,
+        message: `Deal untuk proyek "${project_title}" dikonfirmasi. Nilai: Rp ${Number(deal_amount).toLocaleString('id-ID')}. Estimasi selesai: ${timeline?.estimated_completion}.`,
+      });
+
+      if (payload.members) {
+        await generateSuratTugas({
+          event_id: `surat_${deal_id}`,
+          project_id,
+          project_title,
+          members: payload.members,
+        });
       }
-    });
+      break;
+    }
+
+    case 'bidding.bid.counter.offered': {
+      const { user_id, project_title } = payload;
+      await processNotification({
+        event_id: `counter_${user_id}_${Date.now()}`,
+        user_id,
+        user_email: payload.user_email || '',
+        type: 'COUNTER_OFFER',
+        subject: `Ada counter offer baru — "${project_title}"`,
+        message: `Pihak lain mengirimkan counter offer untuk proyek "${project_title}". Silakan cek dan berikan respons.`,
+      });
+      break;
+    }
+
+    default:
+      console.warn(`[RabbitMQ] Routing key tidak dikenali: ${routingKey}`);
   }
 };
