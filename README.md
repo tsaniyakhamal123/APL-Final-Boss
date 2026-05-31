@@ -1,34 +1,39 @@
-# Project APL - Communication & Automation Service  
-**Kelompok 5 — “Broadcaster”**
+````
+# Project APL - Communication & Automation Service
 
-Communication & Automation Service adalah salah satu microservice dalam ekosistem ProjectHub, sebuah platform terintegrasi berbasis microservices untuk mengelola proses bidding judul Capstone di lingkungan akademik.
+**Kelompok 5 — "Broadcaster"**
+
+Communication & Automation Service adalah salah satu microservice dalam ekosistem ProjectHub, sebuah platform terintegrasi berbasis microservices untuk mengelola proses bidding di lingkungan akademik.
 
 Service ini berperan sebagai pusat komunikasi sistem yang menangani:
 
-- Pengumuman resmi dari panitia/dosen
 - Notifikasi otomatis ketika terjadi perubahan status bidding
 - Otomatisasi generate dokumen Surat Tugas (PDF)
+- Logging seluruh notifikasi untuk audit & idempotency
 
 ---
 
-# 🚀 Fitur Utama
+## 🚀 Fitur Utama
 
-## MVP
-- Manajemen dan distribusi pengumuman
-- Download dokumen pengumuman PDF
+### MVP
+- Notifikasi email otomatis saat status bidding berubah
+- Logging notifikasi ke database
 
-## Medium
-- Email notifikasi otomatis ketika status bidding berubah
-- Logging notifikasi untuk audit & idempotency
+### Medium
+- Idempotency check — event yang sama tidak diproses dua kali
+- Deduplikasi notifikasi
 
-## Maximum
-- Generate Surat Tugas otomatis dalam format PDF
-- Download Surat Tugas
+### Maximum
+- Generate Surat Tugas PDF otomatis saat deal dikonfirmasi
+- Download Surat Tugas via REST API
 
 ---
 
-Arsitektur
-Service ini menggunakan pola Event-Driven Architecture (EDA) — ia tidak dipanggil langsung oleh service lain, melainkan mendengarkan event yang dipublish ke message broker.
+## 🏗 Arsitektur
+
+Service ini menggunakan pola **Event-Driven Architecture (EDA)** — tidak dipanggil langsung oleh service lain, melainkan mendengarkan event yang dipublish ke message broker.
+
+```
 Service Lain (Kelompok 1–4)
         │
         │  publish event
@@ -47,47 +52,70 @@ Service    Generator (PDF)
    │         │
    ▼         ▼
 PostgreSQL  Disk Storage
+```
 
+### Routing Keys yang Disubscribe
 
-Tech Stack
-Layer
-Teknologi
-Backend
-Node.js + Express v5
-Message Broker
-RabbitMQ (topic exchange)
-Database
-PostgreSQL
-PDF Generator
-PDFKit
-Email Service
-Nodemailer (Gmail)
-Containerization
-Docker + Docker Compose
+| Routing Key | Trigger | Aksi |
+|---|---|---|
+| `bidding.project.created` | Proyek baru dibuat | Kirim email notifikasi ke klien |
+| `bidding.bid.status.updated` | Bid diterima / ditolak | Kirim email ke freelancer |
+| `bidding.bid.deal.confirmed` | Deal dikonfirmasi | Kirim email + generate Surat Tugas PDF |
+| `bidding.bid.counter.offered` | Ada counter offer | Kirim email notifikasi ke user |
 
+---
 
-REST API
-Base URL: http://localhost:3000/api/notifications
-Method
-Endpoint
-Deskripsi
-GET
-/health
-Health check service
-GET
-/notifications
-Ambil semua notifikasi
-GET
-/surat-tugas
-Ambil semua surat tugas
-POST
-/surat-tugas/generate
-Generate surat tugas manual
-GET
-/surat-tugas/:id/download
-Download PDF surat tugas
+## Tech Stack
 
-Contoh request generate surat tugas
+| Layer | Teknologi |
+|---|---|
+| Backend | Node.js + Express v5 |
+| Message Broker | RabbitMQ (topic exchange) |
+| Database | PostgreSQL |
+| PDF Generator | PDFKit |
+| Email Service | Nodemailer (Gmail) |
+| Containerization | Docker + Docker Compose |
+
+---
+
+## 📌 Business Role
+
+Service ini berfungsi sebagai **Communication & Automation Layer** pada ekosistem ProjectHub:
+
+- Subscribe event dari service lain
+- Trigger notifikasi otomatis ke user
+- Generate dokumen administratif (Surat Tugas)
+
+---
+
+## 🧩 Functional Requirements
+
+### Notification Module
+- Terima event perubahan status bidding
+- Kirim email otomatis Accepted / Rejected
+- Logging notifikasi dan deduplikasi event
+
+### Automation Module
+- Generate Surat Tugas PDF otomatis
+- Download surat tugas
+
+---
+
+## REST API
+
+Base URL: `http://localhost:3000/api/notifications`
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| `GET` | `/health` | Health check service |
+| `GET` | `/notifications` | Ambil semua notifikasi |
+| `GET` | `/surat-tugas` | Ambil semua surat tugas |
+| `POST` | `/surat-tugas/generate` | Generate surat tugas manual |
+| `GET` | `/surat-tugas/:id/download` | Download PDF surat tugas |
+
+### Contoh request generate surat tugas
+
+```json
 POST /api/notifications/surat-tugas/generate
 Content-Type: application/json
 
@@ -99,73 +127,49 @@ Content-Type: application/json
     { "name": "Sari Dewi", "nim": "21/123457/TIF/002", "role": "Frontend Developer" }
   ]
 }
+```
 
-Communication & Automation Service — Kelompok 5 "Broadcaster" · APL 2026
+---
 
-
-# Penamaan Branching
+## Penamaan Branching
 
 ### main branch
-branch yang terintegrasi dengan kelompok lain.
+Branch yang terintegrasi dengan kelompok lain.
 
 ### develop branch
-internal testing branch
+Internal testing branch.
 
 ### fitur branch
-```bash
+
+```
 <type>/<short_description>.<nama>
 ```
-contoh: feature/navbar.joko
 
----
-
-# 📌 Business Role
-Service ini berfungsi sebagai **Communication & Automation Layer** pada ekosistem ProjectHub:
-
-- Broadcast pengumuman ke seluruh pengguna
-- Subscribe event dari service lain
-- Trigger notifikasi otomatis
-- Generate dokumen administratif
-
----
-
-# 🧩 Functional Requirements
-
-## Announcement Module
-- Upload dokumen pengumuman
-- Lihat daftar pengumuman
-- Download pengumuman
-
-## Notification Module
-- Terima event perubahan status bidding
-- Kirim email otomatis Accepted / Rejected
-- Logging notifikasi dan deduplikasi event
-
-## Automation Module
-- Generate Surat Tugas PDF
-- Download surat tugas
+Contoh: `feature/email-notif.tsaniya`
 
 ---
 
 ## Prerequisites
-Pastikan terinstall:
 
-- Docker
-- Docker Compose
-- Node.js
+Pastikan sudah terinstall:
+
+- Docker & Docker Compose
+- Node.js v18+
 - PostgreSQL
-- Redis
+- RabbitMQ
 
 ---
 
-# Authors
-Anggota Kelompok 5  
+## Authors
 
-- Hanifah 
+Anggota Kelompok 5:
+
+- Hanifah
 - Abe
 - Tsaniya
 - Danella
 - Rafa
 - Athaya
 
-Kalo ada yang bingung WA niya aja
+> Kalo ada yang bingung WA Niya aja 😄
+````
