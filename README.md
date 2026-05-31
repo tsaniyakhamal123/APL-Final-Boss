@@ -27,27 +27,81 @@ Service ini berperan sebagai pusat komunikasi sistem yang menangani:
 
 ---
 
-# 🏗 Arsitektur
+Arsitektur
+Service ini menggunakan pola Event-Driven Architecture (EDA) — ia tidak dipanggil langsung oleh service lain, melainkan mendengarkan event yang dipublish ke message broker.
+Service Lain (Kelompok 1–4)
+        │
+        │  publish event
+        ▼
+   RabbitMQ Exchange
+   (tracker.events, type: topic)
+        │
+        │  consume queue
+        ▼
+ Notification Subscriber
+   ┌────┴────┐
+   │         │
+   ▼         ▼
+Email      Surat Tugas
+Service    Generator (PDF)
+   │         │
+   ▼         ▼
+PostgreSQL  Disk Storage
 
-Menggunakan:
 
-- **Event-Driven Architecture (EDA)**
-- **REST API + Redis Pub/Sub**
-- **Microservices Architecture**
+Tech Stack
+Layer
+Teknologi
+Backend
+Node.js + Express v5
+Message Broker
+RabbitMQ (topic exchange)
+Database
+PostgreSQL
+PDF Generator
+PDFKit
+Email Service
+Nodemailer (Gmail)
+Containerization
+Docker + Docker Compose
 
-## Tech Stack
 
-| Layer | Teknologi |
-|------|-----------|
-Backend | Node.js |
-Database | PostgreSQL |
-Cache / Event Bus | Redis |
-PDF Generator | WeasyPrint |
-Email Service | Nodemailer |
-Gateway | Nginx |
-Containerization | Docker |
+REST API
+Base URL: http://localhost:3000/api/notifications
+Method
+Endpoint
+Deskripsi
+GET
+/health
+Health check service
+GET
+/notifications
+Ambil semua notifikasi
+GET
+/surat-tugas
+Ambil semua surat tugas
+POST
+/surat-tugas/generate
+Generate surat tugas manual
+GET
+/surat-tugas/:id/download
+Download PDF surat tugas
 
----
+Contoh request generate surat tugas
+POST /api/notifications/surat-tugas/generate
+Content-Type: application/json
+
+{
+  "project_id": "proj-abc123",
+  "project_title": "Pengembangan Website E-Commerce",
+  "members": [
+    { "name": "Budi Santoso", "nim": "21/123456/TIF/001", "role": "Backend Developer" },
+    { "name": "Sari Dewi", "nim": "21/123457/TIF/002", "role": "Frontend Developer" }
+  ]
+}
+
+Communication & Automation Service — Kelompok 5 "Broadcaster" · APL 2026
+
 
 # Penamaan Branching
 
