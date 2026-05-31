@@ -1,4 +1,3 @@
-````
 # Project APL - Communication & Automation Service
 
 **Kelompok 5 — "Broadcaster"**
@@ -172,4 +171,3 @@ Anggota Kelompok 5:
 - Athaya
 
 > Kalo ada yang bingung WA Niya aja 😄
-````
